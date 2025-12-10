@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { generateImage, optimizePrompt, upscaler } from './services/hfService';
 import { generateGiteeImage, optimizePromptGitee } from './services/giteeService';
+import { generateMSImage, optimizePromptMS } from './services/msService';
 import { GeneratedImage, AspectRatioOption, ModelOption, ProviderOption } from './types';
 import { HistoryGallery } from './components/HistoryGallery';
-import { CustomSelect } from './components/CustomSelect';
+import { Select } from './components/Select';
 import { SettingsModal } from './components/SettingsModal';
 import { FAQModal } from './components/FAQModal';
 import { Logo, Icon4x } from './components/Icons'
@@ -52,15 +53,22 @@ const GITEE_MODEL_OPTIONS = [
   { value: 'Qwen-Image', label: 'Qwen Image' }
 ];
 
+const MS_MODEL_OPTIONS = [
+  { value: 'Tongyi-MAI/Z-Image-Turbo', label: 'Z-Image Turbo' }
+];
+
 const PROVIDER_OPTIONS = [
     { value: 'huggingface', label: 'Hugging Face' },
-    { value: 'gitee', label: 'Gitee AI' }
+    { value: 'gitee', label: 'Gitee AI' },
+    { value: 'modelscope', label: 'Model Scope' }
 ];
 
 const getModelConfig = (provider: ProviderOption, model: ModelOption) => {
   if (provider === 'gitee') {
     if (model === 'z-image-turbo') return { min: 1, max: 20, default: 9 };
     if (model === 'Qwen-Image') return { min: 4, max: 50, default: 24 };
+  } else if (provider === 'modelscope') {
+    if (model === 'Tongyi-MAI/Z-Image-Turbo') return { min: 1, max: 20, default: 9 };
   } else {
     if (model === 'z-image-turbo') return { min: 1, max: 20, default: 9 };
     if (model === 'qwen-image-fast') return { min: 4, max: 28, default: 8 };
@@ -208,6 +216,8 @@ export default function App() {
       // Reset model to first option of the new provider to avoid mismatch
       if (p === 'gitee') {
           setModel(GITEE_MODEL_OPTIONS[0].value as ModelOption);
+      } else if (p === 'modelscope') {
+          setModel(MS_MODEL_OPTIONS[0].value as ModelOption);
       } else {
           setModel(HF_MODEL_OPTIONS[0].value as ModelOption);
       }
@@ -256,6 +266,8 @@ export default function App() {
 
       if (provider === 'gitee') {
          result = await generateGiteeImage(model, prompt, aspectRatio, seedNumber, steps, enableHD);
+      } else if (provider === 'modelscope') {
+         result = await generateMSImage(model, prompt, aspectRatio, seedNumber, steps, enableHD);
       } else {
          result = await generateImage(model, prompt, aspectRatio, seedNumber, enableHD, steps);
       }
@@ -282,6 +294,8 @@ export default function App() {
     // Keep provider as is
     if (provider === 'gitee') {
         setModel(GITEE_MODEL_OPTIONS[0].value as ModelOption);
+    } else if (provider === 'modelscope') {
+        setModel(MS_MODEL_OPTIONS[0].value as ModelOption);
     } else {
         setModel(HF_MODEL_OPTIONS[0].value as ModelOption);
     }
@@ -352,9 +366,11 @@ export default function App() {
     try {
         let optimized = '';
         if (provider === 'gitee') {
-             optimized = await optimizePromptGitee(prompt);
+             optimized = await optimizePromptGitee(prompt, lang);
+        } else if (provider === 'modelscope') {
+             optimized = await optimizePromptMS(prompt, lang);
         } else {
-             optimized = await optimizePrompt(prompt);
+             optimized = await optimizePrompt(prompt, lang);
         }
         setPrompt(optimized);
     } catch (err: any) {
@@ -367,7 +383,7 @@ export default function App() {
   };
 
   const handleRandomizeSeed = () => {
-    setSeed(Math.floor(Math.random() * 1000000).toString());
+    setSeed(Math.floor(Math.random() * 2147483647).toString());
   };
 
   const handleAdjustSeed = (amount: number) => {
@@ -540,12 +556,12 @@ export default function App() {
   };
 
   const getModelLabel = (modelValue: string) => {
-      const option = [...HF_MODEL_OPTIONS, ...GITEE_MODEL_OPTIONS].find(o => o.value === modelValue);
+      const option = [...HF_MODEL_OPTIONS, ...GITEE_MODEL_OPTIONS, ...MS_MODEL_OPTIONS].find(o => o.value === modelValue);
       return option ? option.label : modelValue;
   };
 
   const isWorking = isLoading;
-  const currentModelOptions = provider === 'gitee' ? GITEE_MODEL_OPTIONS : HF_MODEL_OPTIONS;
+  const currentModelOptions = provider === 'gitee' ? GITEE_MODEL_OPTIONS : (provider === 'modelscope' ? MS_MODEL_OPTIONS : HF_MODEL_OPTIONS);
   const currentModelConfig = getModelConfig(provider, model);
 
   return (
@@ -553,9 +569,9 @@ export default function App() {
       <div className="flex h-full grow flex-col">
         {/* Header */}
         <header className="w-full backdrop-blur-md sticky top-0 z-50 bg-background-dark/30 border-b border-white/5">
-          <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-2 md:px-8 md:py-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3 md:px-8 md:py-4">
             <div className="flex items-center gap-2 text-white">
-              <Logo />
+              <Logo className="size-10" />
               <h1 className="text-white text-xl font-bold leading-tight tracking-[-0.015em]">{t.appTitle}</h1>
             </div>
             
@@ -563,7 +579,7 @@ export default function App() {
               <Tooltip content={t.sourceCode} position="bottom">
                   <a
                     href="https://github.com/Amery2010/peinture"
-                    className="flex items-center justify-center p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-all active:scale-95"
+                    className="flex items-center justify-center p-2 rounded-lg text-white/70 hover:text-pink-400 hover:bg-white/10 transition-all active:scale-95"
                     target="_blank"
                   >
                     <Github className="w-5 h-5" />
@@ -573,7 +589,7 @@ export default function App() {
               <Tooltip content={t.help} position="bottom">
                   <button
                     onClick={() => setShowFAQ(true)}
-                    className="flex items-center justify-center p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-all active:scale-95"
+                    className="flex items-center justify-center p-2 rounded-lg text-white/70 hover:text-green-400 hover:bg-white/10 transition-all active:scale-95"
                   >
                     <CircleHelp className="w-5 h-5" />
                   </button>
@@ -582,7 +598,7 @@ export default function App() {
               <Tooltip content={t.settings} position="bottom">
                   <button
                     onClick={() => setShowSettings(true)}
-                    className="flex items-center justify-center p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-all active:scale-95"
+                    className="flex items-center justify-center p-2 rounded-lg text-white/70 hover:text-purple-400 hover:bg-white/10 transition-all active:scale-95"
                   >
                     <Settings className="w-5 h-5" />
                   </button>
@@ -591,12 +607,12 @@ export default function App() {
           </div>
         </header>
 
-        <main className="w-full max-w-7xl flex-1 flex flex-col-reverse md:items-stretch md:mx-auto md:flex-row gap-6 px-6 md:px-6 pb-8 pt-6">
+        <main className="w-full max-w-7xl flex-1 flex flex-col-reverse md:items-stretch md:mx-auto md:flex-row gap-4 md:gap-6 px-4 md:px-8 pb-4 md:pb-8 pt-4 md:pt-6">
           
           {/* Left Column: Controls */}
-          <aside className="w-full md:max-w-sm flex-shrink-0 flex flex-col gap-6">
-            <div className="flex-grow space-y-6">
-              <div className="relative z-10 bg-black/20 p-6 rounded-xl backdrop-blur-xl border border-white/10 flex flex-col gap-6 shadow-2xl shadow-black/20">
+          <aside className="w-full md:max-w-sm flex-shrink-0 flex flex-col gap-4 md:gap-6">
+            <div className="flex-grow space-y-4 md:space-y-6">
+              <div className="relative z-10 bg-black/20 p-4 md:p-6 rounded-xl backdrop-blur-xl border border-white/10 flex flex-col gap-4 md:gap-6 shadow-2xl shadow-black/20">
                 
                 {/* Prompt Input */}
                 <div className="group flex flex-col flex-1">
@@ -677,9 +693,9 @@ export default function App() {
                 </div>
 
                 {/* Parameters */}
-                <div className="space-y-6">
+                <div className="space-y-4 md:space-y-6">
                   {/* Provider Selection */}
-                  <CustomSelect
+                  <Select
                     label={t.provider}
                     value={provider}
                     onChange={handleProviderChange}
@@ -688,14 +704,14 @@ export default function App() {
                   />
 
                   {/* Model Selection */}
-                  <CustomSelect
+                  <Select
                     label={t.model}
                     value={model}
                     onChange={(val) => setModel(val as ModelOption)}
                     options={currentModelOptions}
                     icon={<Cpu className="w-5 h-5" />}
                     headerContent={
-                        model === 'z-image-turbo' && (
+                        (model === 'z-image-turbo' || model === 'Tongyi-MAI/Z-Image-Turbo') && (
                             <div className="flex items-center gap-2 animate-in fade-in duration-300">
                                 <span className="text-xs font-medium text-white/50">{t.hd}</span>
                                 <Tooltip content={enableHD ? t.hdEnabled : t.hdDisabled}>
@@ -714,7 +730,7 @@ export default function App() {
                   />
 
                   {/* Aspect Ratio */}
-                  <CustomSelect
+                  <Select
                     label={t.aspectRatio}
                     value={aspectRatio}
                     onChange={(val) => setAspectRatio(val as AspectRatioOption)}
@@ -920,11 +936,13 @@ export default function App() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <span className="block text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-0.5">{t.provider}</span>
-                                    <p className="text-white/90 capitalize">{currentImage.provider === 'gitee' ? 'Gitee AI' : 'Hugging Face'}</p>
+                                    <p className="text-white/90 capitalize">
+                                        {currentImage.provider === 'gitee' ? 'Gitee AI' : (currentImage.provider === 'modelscope' ? 'Model Scope' : 'Hugging Face')}
+                                    </p>
                                 </div>
                                 <div>
                                     <span className="block text-white/40 text-[10px] uppercase tracking-wider font-semibold mb-0.5">{t.model}</span>
-                                    <p className="text-white/90">{getModelLabel(currentImage.model)}</p>
+                                    <p className="text-white/90 truncate">{getModelLabel(currentImage.model)}</p>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
